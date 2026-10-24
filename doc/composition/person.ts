@@ -5,8 +5,8 @@ import { jsonArrayFrom } from "kysely/helpers/postgres";
 
 export type PersonPipeline<
   O,
-  T = O,
-  S extends PipelineState = PipelineState,
+  T,
+  S extends PipelineState,
   TB extends keyof Database = "person",
 > = TB extends "person" ? Pipeline<Database, TB, O, T, S> : never;
 

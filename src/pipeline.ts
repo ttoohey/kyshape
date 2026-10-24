@@ -36,6 +36,9 @@ function basePipeline<DB, TB extends keyof DB, O, T, S extends PipelineState>(
     cursor: cursor(query, transform),
     list: list(query, transform),
     page: page(query, transform),
+    /**
+     * seek docblock
+     */
     seek: seek(query, transform),
     stream: stream(query, transform),
   };

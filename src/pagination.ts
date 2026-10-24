@@ -15,14 +15,14 @@ type PrettifyTuple<T> = T extends readonly [infer Head, ...infer Tail]
   ? [Head, ...PrettifyTuple<Tail>]
   : [];
 
-type MapTuple<DB, TB extends keyof DB, T extends readonly any[]> = {
+type MapTuple<DB, TB extends keyof DB, T extends readonly string[]> = {
   [K in keyof T]: ExtractTypeFromReferenceExpression<DB, TB, T[K]>;
 };
 
 export type ExtractTupleTypes<
   DB,
   TB extends keyof DB,
-  T extends readonly any[],
+  T extends readonly string[],
 > = PrettifyTuple<MapTuple<DB, TB, T>>;
 
 export interface CountedMeta {
@@ -47,21 +47,25 @@ export interface OffsetMeta {
 export type KeysetMeta<TCursor> = (
   | {
       hasNext: true;
-      nextCursor: TCursor;
+      nextCursor: string;
+      nextKey: TCursor;
     }
   | {
       hasNext: false;
       nextCursor: null;
+      nextKey: null;
     }
 ) &
   (
     | {
         hasPrevious: true;
-        previousCursor: TCursor;
+        previousCursor: string;
+        previousKey: TCursor;
       }
     | {
         hasPrevious: false;
         previousCursor: null;
+        previousKey: null;
       }
   );
 

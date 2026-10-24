@@ -1,13 +1,70 @@
 import { SelectQueryBuilder } from "kysely";
 import { PipelineState } from "./types.js";
 
-export type FirstFn<T, S extends PipelineState> = () => Promise<
-  S["throwIfNotFound"] extends true
-    ? T
-    : S["throwIfNotFound"] extends false
-      ? T | null
-      : never
->;
+export type FirstResult<B extends boolean, T> = B extends true
+  ? T
+  : B extends false
+    ? T | undefined
+    : never;
+
+export type FirstFn<T, S extends PipelineState> = {
+  /**
+   * **Pipeline.first()**
+   *
+   * Retrieve the first matching record of the pipeline's query builder.
+   *
+   * @remarks
+   *
+   * The `.first()` function will call the query builder `executeTakeFirst()`
+   * function to efficiently retrieve the first item of the result set.
+   *
+   * @example
+   *
+   * ```ts
+   * function findPerson() {
+   *   const query = db.selectFrom("person").selectAll();
+   *   return pipeline(query);
+   * }
+   *
+   * const person = await findPerson().first();
+   * ```
+   *
+   * **The `throwIfNotFound` flag**
+   *
+   * If the pipeline's `throwIfNotFound` flag is set the query builder's
+   * `executeTakeFirstOrThrow()` function is called. This results in a
+   * guarantee that the item will not be undefined.
+   *
+   * @example
+   *
+   * ```ts
+   * function findPerson() {
+   *   const query = db.selectFrom("person").selectAll();
+   *   return pipeline(query).throwIfNotFound();
+   * }
+   *
+   * const person = await findPerson().first();
+   * // `person` is _not_ `undefined`
+   * ```
+   *
+   * **The `lazy` flag**
+   *
+   * If the pipeline's `lazy` flag is set then awaiting the pipeline will
+   * automatically call `.first()`.
+   *
+   * @example
+   *
+   * ```ts
+   * function findPerson() {
+   *   const query = db.selectFrom("person").selectAll();
+   *   return pipeline(query).lazy();
+   * }
+   *
+   * const person = await findPerson();
+   * ```
+   */
+  (): Promise<FirstResult<S["throwIfNotFound"], T>>;
+};
 
 export function first<DB, TB extends keyof DB, O, T, S extends PipelineState>(
   query: SelectQueryBuilder<DB, TB, O>,

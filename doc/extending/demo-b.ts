@@ -18,7 +18,7 @@ async () => {
   const person = await findPerson().extend((query) =>
     query.select(["person.first_name as fn", "person.last_name as ln"]),
   );
-  console.log(person satisfies (Person & Aliases) | null);
+  console.log(person satisfies (Person & Aliases) | undefined);
 };
 
 /**
@@ -31,7 +31,7 @@ async () => {
     ...data,
     full_name: `${data.first_name} ${data.last_name}`,
   }));
-  console.log(person satisfies (Person & FullName) | null);
+  console.log(person satisfies (Person & FullName) | undefined);
 };
 
 /**
@@ -49,5 +49,5 @@ async () => {
         full_name: `${data.fn} ${data.ln}`,
       })),
   );
-  console.log(person satisfies (Person & Aliases & FullName) | null);
+  console.log(person satisfies (Person & Aliases & FullName) | undefined);
 };

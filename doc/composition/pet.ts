@@ -3,8 +3,8 @@ import { Database, db } from "./db.js";
 
 export type PetPipeline<
   O,
-  T = O,
-  S extends PipelineState = PipelineState,
+  T,
+  S extends PipelineState,
   TB extends keyof Database = "pet",
 > = TB extends "pet" ? Pipeline<Database, TB, O, T, S> : never;
 

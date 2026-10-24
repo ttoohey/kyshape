@@ -1,2 +1,2 @@
-export type { Pipeline, PipelineState, JsonFrom } from "./types.js";
+export type { Pipeline, PipelineState } from "./types.js";
 export { pipeline } from "./pipeline.js";

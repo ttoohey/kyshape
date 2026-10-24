@@ -9,25 +9,35 @@ const findPerson = () => pipeline(query);
 const findPersonLazy = () => findPerson().lazy();
 
 /**
- * A pipeline is a "thenable" object which resolves
- * to a single record or null.
- *
- * It calls the query builder `executeTakeFirst()` method.
+ * Retrieve the first matching record of the pipeline's query builder.
+
+* It calls the query builder `executeTakeFirst()` method.
  */
 async () => {
-  const person = await findPersonLazy();
-  console.log(person satisfies Person | null);
+  const person = await findPerson().first();
+
+  person satisfies Person | undefined;
 };
 
 /**
- * the `throwIfNotFound()` modifier makes the thenable
+ * A pipeline with the `lazy` flag set  is a "thenable" object which calls
+ * `.first()` automatically if it's awaited.
+ *
+ */
+async () => {
+  const person = await findPersonLazy();
+  console.log(person satisfies Person | undefined);
+};
+
+/**
+ * A pipeline with the `throwIfNotFound()` flag set makes `.first()`
  * reject if the record is not found, which narrows
  * the type to be non-null.
  *
  * It calls the query builder `executeTakeFirstOrThrow()` method.
  */
 async () => {
-  const person = await findPersonLazy().throwIfNotFound();
+  const person = await findPerson().throwIfNotFound().first();
   console.log(person satisfies Person);
 };
 
@@ -90,51 +100,88 @@ async (page: number = 1, pageSize: number = 10) => {
  * meta data.
  *
  * If `options.counting` is true it will execute a second query to get the
- * total count of records. (default is false)
+ * total count of records (default is `false` since keyset pagination is
+ * typically used for efficiency and adding an extra query to
+ * calculate the total number records is rarely required).
  */
 async () => {
-  const result = await findPerson().seek("person.id", {
+  const result = await findPerson().seek({
+    index: "person.id",
     first: 10,
   });
   console.log(result.items satisfies Person[], result.meta);
 };
 
 async () => {
-  const page1 = await findPerson().seek(["person.created_at", "id"], {
+  const page1 = await findPerson().seek({
+    index: ["person.created_at", "id"],
     first: 10,
-    direction: ["asc", "desc"],
   });
   if (page1.meta.hasNext) {
-    const page2 = await findPerson().seek(["person.created_at", "id"], {
+    const page2 = await findPerson().seek({
+      index: ["person.created_at", "id"],
       first: 10,
-      direction: ["asc", "desc"],
       cursor: page1.meta.nextCursor,
     });
     console.log(page2.items satisfies Person[]);
   }
 };
 
-async (cursor: [Date, number]) => {
-  const result = await findPerson().seek(["created_at", "person.id"], {
-    first: 10,
-    cursor,
-    counting: true,
-    direction: "desc",
-  });
-  console.log(
-    result.items satisfies Person[],
-    result.meta.totalItems satisfies number,
-  );
+async () => {
+  const result = await findPerson().seek({ index: "person.id", first: 10 });
+  result.items satisfies Person[];
   if (result.meta.hasNext) {
-    console.log(result.meta.nextCursor satisfies [Date, number]);
+    result.meta.nextKey satisfies number;
+    result.meta.nextCursor satisfies string;
+  }
+};
+
+async () => {
+  const result = await findPerson().seek({
+    index: {
+      column: "created_at",
+      direction: "desc",
+      nulls: "never",
+    },
+    first: 10,
+  });
+  result.items satisfies Person[];
+  if (result.meta.hasNext) {
+    result.meta.nextKey satisfies Date;
+    result.meta.nextCursor satisfies string;
+  }
+};
+
+async (key?: [Date, number]) => {
+  const result = await findPerson().seek({
+    index: [{ column: "created_at" }, "person.id"],
+    first: 10,
+    key,
+    counting: true,
+  });
+  result.items satisfies Person[];
+  result.meta.totalItems satisfies number;
+  if (result.meta.hasNext) {
+    result.meta.nextKey satisfies [Date, number];
+    result.meta.nextCursor satisfies string;
   }
 };
 
 /**
- * A pipeline is an async iterable object which may
- * be used in a `for await` loop.
+ * `.stream()` allows async iteration over results using transaction based
+ * streaming.
  *
  * It calls the query builder `stream()` method.
+ */
+async () => {
+  for await (const person of findPerson().stream()) {
+    console.log(person satisfies Person);
+  }
+};
+
+/**
+ * If the pipeline's `lazy` flag is set then `.stream()` is called automatically
+ * when used in a `for await..of` loop.
  */
 async () => {
   for await (const person of findPersonLazy()) {

@@ -8,6 +8,10 @@
     ".": {
       "default": "./lib/index.js",
       "types": "./lib/index.d.ts"
+    },
+    "./helpers": {
+      "default": "./lib/helpers.js",
+      "types": "./lib/helpers/index.d.ts"
     }
   },
   "type": "module",
@@ -18,6 +22,7 @@
   "scripts": {
     "build": "rimraf lib && tsc",
     "format": "npx prettier . --write",
+    "prepare": "npm run build",
     "test": "tsx --test"
   },
   "devDependencies": {

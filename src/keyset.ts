@@ -3,10 +3,30 @@ import {
   ExpressionBuilder,
   SelectQueryBuilder,
   SqlBool,
+  StringReference,
 } from "kysely";
 import { Direction } from "./pagination.js";
 
 export type Nulls = "first" | "last" | "never";
+
+export type ColumnConfig<DB, TB extends keyof DB> =
+  | StringReference<DB, TB>
+  | {
+      column: StringReference<DB, TB>;
+      direction?: "asc" | "desc";
+      nulls?: "first" | "last" | "never";
+      toCursor?: (value: any) => any;
+      fromCursor?: (value: any) => any;
+    };
+
+export type ColumnFromColumnConfig<C extends string | { column: string }> =
+  C extends string ? C : C extends { column: string } ? C["column"] : never;
+
+export type ColumnFromColumnConfigTuple<
+  C extends readonly (string | { column: string })[],
+> = {
+  [K in keyof C]: ColumnFromColumnConfig<C[K]>;
+};
 
 function strictlyAfter(
   eb: ExpressionBuilder<any, any>,
@@ -80,14 +100,14 @@ export function buildCompositeWhere(
   return condition ?? eb.lit(false);
 }
 
-export function buildCompositeOrderBy(
-  columns: readonly any[],
+export function buildCompositeOrderBy<DB, TB extends keyof DB>(
+  columns: readonly StringReference<DB, TB>[],
   directions: readonly Direction[],
   nulls: readonly Nulls[],
 ) {
-  return <DB, TB extends keyof DB, O>(query: SelectQueryBuilder<DB, TB, O>) =>
+  return <O>(query: SelectQueryBuilder<DB, TB, O>) =>
     columns.reduce(
-      (q: SelectQueryBuilder<DB, TB, O>, column, i) =>
+      (q, column, i) =>
         q.orderBy(column, (ob) => {
           const ordered = directions[i] === "asc" ? ob.asc() : ob.desc();
           if (nulls[i] === "never") {
