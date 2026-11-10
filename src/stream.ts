@@ -2,7 +2,7 @@ import { SelectQueryBuilder, StreamOptions } from "kysely";
 
 export type StreamFn<T> = {
   /**
-   * **Pipeline.stream()**
+   * **KyShape.stream()**
    *
    * Transaction-based streaming.
    *
@@ -10,7 +10,7 @@ export type StreamFn<T> = {
    * short running processes where holding a database transaction open for
    * the duration is acceptable.
    *
-   * @see `Pipeline.cursor()` for a keyset (cursor) based alternative.
+   * @see `KyShape.streamCursor()` for a keyset (cursor) based alternative.
    *
    * @param chunkSizeOrOptions see Kysely `SelectQueryBuilder.stream`
    *
@@ -19,7 +19,7 @@ export type StreamFn<T> = {
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query);
+   *   return kyshape(query);
    * }
    *
    * for await (const item of findPerson().stream()) {
@@ -27,17 +27,17 @@ export type StreamFn<T> = {
    * }
    * ```
    *
-   * **Pipeline `lazy` mode**
+   * **KyShape `lazy` mode**
    *
-   * A pipeline with the `lazy` flag set will call `.stream()` automatically
-   * when used in a `for await..of` loop.
+   * A `KyShape` instance with the `lazy` flag set will call `.stream()`
+   * automatically when used in a `for await..of` loop.
    *
    * @example
    *
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query).lazy();
+   *   return kyshape(query).lazy();
    * }
    *
    * for await (const item of findPerson()) {

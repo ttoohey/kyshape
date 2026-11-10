@@ -9,19 +9,19 @@ type Pet = Selectable<Database["pet"]>;
 type Pets = { pets: Pet[] };
 
 /**
- * Use `.compose()` to extend the query builder to find
+ * Use `.shape()` to extend the query builder to find
  * related `Pet` records.
  *
- * `findPet()` is a query pipeline for selecting all pets
+ * `findPet()` is a `KyShape` instance for selecting all pets
  *
- * `addPetsToPerson(findPet())` extends the "person" pipeline to include
- * a `pets` field containing the pets identified in the `findPet()` pipeline,
+ * `addPetsToPerson(findPet())` extends the "person" instance to include
+ * a `pets` field containing the pets identified in the `findPet()` instance,
  * with the query extended to find only related `pet` records.
  *
- * The findPerson() pipeline resolves to a `Person & { pets: Pet[] }` shape.
+ * The findPerson() instance resolves to a `Person & { pets: Pet[] }` shape.
  */
 async () => {
-  const person = await findPerson().compose(addPetsToPerson(findPet()));
+  const person = await findPerson().shape(addPetsToPerson(findPet()));
   console.log(person satisfies Person & Pets);
   for (const pet of person.pets) {
     console.log(pet satisfies Pet);

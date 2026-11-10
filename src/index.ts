@@ -1,2 +1,2 @@
-export type { Pipeline, PipelineState } from "./types.js";
-export { pipeline } from "./pipeline.js";
+export type { BuilderFor, ShapeFor } from "./types.js";
+export { kyshape } from "./kyshape.js";

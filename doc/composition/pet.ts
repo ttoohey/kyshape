@@ -1,19 +1,19 @@
-import { pipeline, Pipeline, PipelineState } from "kysely-pipeline";
+import { kyshape, KyShape, KyShapeState } from "kyshape";
 import { Database, db } from "./db.js";
 
-export type PetPipeline<
+export type PetShape<
   O,
   T,
-  S extends PipelineState,
+  S extends KyShapeState = any,
   TB extends keyof Database = "pet",
-> = TB extends "pet" ? Pipeline<Database, TB, O, T, S> : never;
+> = TB extends "pet" ? KyShape<Database, TB, O, T, S> : never;
 
 /**
  * Find records from the `pet` table.
  *
- * @returns QueryBuilderPipeline
+ * @returns KyShape
  */
 export function findPet() {
   const query = db.selectFrom("pet").selectAll();
-  return pipeline(query).throwIfNotFound();
+  return kyshape(query).required();
 }

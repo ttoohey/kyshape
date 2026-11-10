@@ -1,5 +1,5 @@
 import { SelectQueryBuilder } from "kysely";
-import { PipelineState } from "./types.js";
+import { KyShapeState } from "./types.js";
 
 export type FirstResult<B extends boolean, T> = B extends true
   ? T
@@ -7,11 +7,11 @@ export type FirstResult<B extends boolean, T> = B extends true
     ? T | undefined
     : never;
 
-export type FirstFn<T, S extends PipelineState> = {
+export type FirstFn<T, S extends KyShapeState> = {
   /**
-   * **Pipeline.first()**
+   * **KyShape.first()**
    *
-   * Retrieve the first matching record of the pipeline's query builder.
+   * Retrieve the first matching record of the `KyShape` instances's query builder.
    *
    * @remarks
    *
@@ -23,15 +23,15 @@ export type FirstFn<T, S extends PipelineState> = {
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query);
+   *   return kyshape(query);
    * }
    *
    * const person = await findPerson().first();
    * ```
    *
-   * **The `throwIfNotFound` flag**
+   * **The `required` flag**
    *
-   * If the pipeline's `throwIfNotFound` flag is set the query builder's
+   * If the `KyShape` instance's `required` flag is set the query builder's
    * `executeTakeFirstOrThrow()` function is called. This results in a
    * guarantee that the item will not be undefined.
    *
@@ -40,7 +40,7 @@ export type FirstFn<T, S extends PipelineState> = {
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query).throwIfNotFound();
+   *   return kyshape(query).throwIfNotFound();
    * }
    *
    * const person = await findPerson().first();
@@ -49,29 +49,29 @@ export type FirstFn<T, S extends PipelineState> = {
    *
    * **The `lazy` flag**
    *
-   * If the pipeline's `lazy` flag is set then awaiting the pipeline will
-   * automatically call `.first()`.
+   * If the `KyShapeState` `lazy` flag is set then awaiting the `KyShape`
+   * instance will automatically call `.first()`.
    *
    * @example
    *
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query).lazy();
+   *   return kyshape(query).lazy();
    * }
    *
    * const person = await findPerson();
    * ```
    */
-  (): Promise<FirstResult<S["throwIfNotFound"], T>>;
+  (): Promise<FirstResult<S["required"], T>>;
 };
 
-export function first<DB, TB extends keyof DB, O, T, S extends PipelineState>(
+export function first<DB, TB extends keyof DB, O, T, S extends KyShapeState>(
   query: SelectQueryBuilder<DB, TB, O>,
   transform: (data: O) => T,
   state: S,
 ): FirstFn<T, S> {
-  return (state.throwIfNotFound
+  return (state.required
     ? async () => await query.executeTakeFirstOrThrow().then(transform)
     : async () =>
         await query
