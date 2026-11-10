@@ -26,7 +26,7 @@ export type ExtractTupleTypes<
 > = PrettifyTuple<MapTuple<DB, TB, T>>;
 
 export interface CountedMeta {
-  totalItems: number;
+  totalCount: number;
   totalPages: number;
 }
 
@@ -40,30 +40,30 @@ export type Direction = "asc" | "desc";
 export interface OffsetMeta {
   page: number;
   limit: number;
-  hasNext: boolean;
-  hasPrevious: boolean;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
 }
 
 export type KeysetMeta<TCursor> = (
   | {
-      hasNext: true;
+      hasNextCursor: true;
       nextCursor: string;
       nextKey: TCursor;
     }
   | {
-      hasNext: false;
+      hasNextCursor: false;
       nextCursor: null;
       nextKey: null;
     }
 ) &
   (
     | {
-        hasPrevious: true;
+        hasPreviousCursor: true;
         previousCursor: string;
         previousKey: TCursor;
       }
     | {
-        hasPrevious: false;
+        hasPreviousCursor: false;
         previousCursor: null;
         previousKey: null;
       }

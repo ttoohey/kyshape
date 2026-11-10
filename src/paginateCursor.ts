@@ -20,76 +20,65 @@ import {
   wrapInCount,
 } from "./pagination.js";
 
-type SeekOptions<TColumn, TCursor, C extends boolean | undefined> = {
-  index: TColumn;
-} & (C extends boolean ? { counting: C } : { counting?: never }) &
-  ((
-    | {
-        first: number;
-        last?: never;
-      }
-    | {
-        last: number;
-        first?: never;
-      }
-  ) &
-    (
-      | { cursor: string | null | undefined; key?: never }
-      | { key: TCursor | null | undefined; cursor?: never }
-      | { key?: never; cursor?: never }
-    ));
+type PaginateCursorOptions<TColumn, TCursor, C extends boolean | undefined> = {
+  orderBy: TColumn;
+} & (C extends boolean ? { withTotalCount: C } : { withTotalCount?: never }) &
+  ({
+    limit: number;
+    strategy?: "forward" | "reverse";
+  } & (
+    | { cursor: string | null | undefined; key?: never }
+    | { key: TCursor | null | undefined; cursor?: never }
+    | { key?: never; cursor?: never }
+  ));
 
 type SingleKeyFn<DB, TB extends keyof DB, T> = {
   /**
-   * **`Pipeline.seek()`**
+   * **`KyShape.paginateCursor()`**
    *
    * Keyset (cursor) based pagination.
    *
-   * @see `Pipeline.page()` for an offset pagination alternative.
+   * @see `KyShape.paginate()` for an offset pagination alternative.
    *
-   * @param options.index The index used to identify page boundaries.
-   * @param options.index.column Column reference
-   * @param options.index.direction Order by direction (default 'asc')
-   * @param options.index.nulls Whether nulls will appear first or last (default 'never')
-   * @param options.index.toCursor Convert from database type to JSON-compatible value for encoding in cursor string
-   * @param options.index.fromCursor Convert from JSON-compatible value to database type for decoding cursor string
-   * @param options.first Count of records to fetch per page setting pagination direction to 'forward'
-   * @param options.last Count of records to fetch per page setting pagination direction to 'reverse'
+   * @param options.orderBy The index used to identify page boundaries.
+   * @param options.orderBy.column Column reference
+   * @param options.orderBy.direction Order by direction (default 'asc')
+   * @param options.orderBy.nulls Whether nulls will appear first or last (default 'never')
+   * @param options.orderBy.toCursor Convert from database type to JSON-compatible value for encoding in cursor string
+   * @param options.orderBy.fromCursor Convert from JSON-compatible value to database type for decoding cursor string
+   * @param options.limit Count of records to fetch
+   * @param options.strategy Set the direction of search
    * @param options.cursor Opaque reference cursor for the page
    * @param options.key Raw reference cursor for the page
-   * @param options.counting Enable extra query to fetch total count of records matching query
+   * @param options.withTotalCount Enable extra query to fetch total count of records matching query
    *
    * @returns The list of items for the page along with meta data with next/previous links
    * - `items`: array of records fetched and transformed
-   * - `meta`: pagination meta data - `{ hasNext, hasPrevious, nextCursor, previousCursor }`
+   * - `meta`: pagination meta data - `{ hasNextCursor, hasPreviousCursor, nextCursor, previousCursor }`
    *
    * @remarks
    *
-   * The `options.index` parameter may be a single column reference, or a
+   * The `options.orderBy` parameter may be a single column reference, or a
    * composite reference (an array of column references). If entered as a string,
    * the defaults (`{ direction: 'asc', nulls: 'never' }`) are used. These may
    * be overridden by providing a configured column reference
    * (`{ column }`).
    *
-   * The index must identify unique records in the table (this is typically
-   * achieved by using a composite index with the table's primary key as the
-   * final element). If an element in a composite index is a nullable column,
-   * set the `nulls` property to `first` or `last`, only use the default `never`
-   * for columns that are non-nullable.
+   * The `orderBy` index must identify unique records in the table (this is
+   * typically achieved by using a composite index with the table's primary key
+   * as the final element). If an element in a composite index is a nullable
+   * column, set the `nulls` property to `first` or `last`, only use the
+   * default `never` for columns that are non-nullable.
    *
-   * `options.index` sets the query's `ORDER BY` expression.
-   *
-   * One of `options.first` or `options.last` must be supplied. This defines
-   * both the direction of pagination travel (forward or reverse), and the page
-   * size of each page.
+   * `options.orderBy` sets the query's `ORDER BY` expression.
    *
    * Only one of `options.cursor` or `options.key` may be supplied. The shape
-   * of `options.key` is dependant on the shape of `options.index`. For a
+   * of `options.key` is dependant on the shape of `options.orderBy`. For a
    * non-composite index it will be the type of the index's column. For a
    * composite index it will be a tuple of the index's column types.
    *
-   * If the `options.counting` flag is set the `meta` data will include
-   * `totalItems` (the total number of items matching the query), and
+   * If the `options.withTotalCount` flag is set the `meta` data will include
+   * `totalCount` (the total number of rows matching the query), and
    * `totalPages` (the total number of pages in the results). The default is
    * `false` since keyset pagination is typically used for efficiency and adding
    * an extra query to calculate the total number records is rarely required.
@@ -99,43 +88,44 @@ type SingleKeyFn<DB, TB extends keyof DB, T> = {
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query);
+   *   return kyshape(query);
    * }
    *
-   * const { items, meta } = await findPerson().seek({
-   *   index: "id",
-   *   first: 50
+   * const { items, meta } = await findPerson().paginateCursor({
+   *   orderBy: "id",
+   *   limit: 50
    * });
    *
-   * if (meta.hasNext) {
-   *   const nextPage = await findPerson().seek({
-   *     index: "id",
-   *     first: 50,
+   * if (meta.hasNextCursor) {
+   *   const nextPage = await findPerson().paginateCursor({
+   *     orderBy: "id",
+   *     limit: 50,
    *     cursor: meta.nextCursor,
    *   });
    *   // OR: using `key` instead of `cursor`
-   *   const nextPage = await findPerson().seek({
-   *     index: "id",
-   *     first: 50,
+   *   const nextPage = await findPerson().paginateCursor({
+   *     orderBy: "id",
+   *     limit: 50,
    *     key: meta.nextKey,
    *   });
    *
    *   // back to the previous page
-   *   const previousPage = await findPerson().seek({
-   *     index: "id",
-   *     last: 50,
+   *   const previousPage = await findPerson().paginateCursor({
+   *     orderBy: "id",
+   *     limit: 50,
+   *     strategy: 'reverse',
    *     cursor: nextPage.meta.previousCursor,
    *   });
    * }
    *
-   * // composite index
-   * const result = await findPerson().seek({
-   *   index: [
+   * // composite orderBy index
+   * const result = await findPerson().paginateCursor({
+   *   orderBy: [
    *     { column: "last_name", nulls: "last" },
    *     { column: "first_name", nulls: "last" },
    *     "id", // unique, non-nullable as final element to ensure index is unique
    *   ],
-   *   first: 50
+   *   limit: 50
    * });
    * ```
    *
@@ -151,8 +141,8 @@ type SingleKeyFn<DB, TB extends keyof DB, T> = {
    *
    * ```ts
    * // Encode a timestamp column as a numeric Unix timestamp (seconds since epoch)
-   * const result = await findPerson().seek({
-   *    index: {
+   * const result = await findPerson().paginateCursor({
+   *    orderBy: {
    *      column: "created_at",
    *      toCursor: (d: Date) => d.getTime() / 1_000,
    *      fromCursor: (s: number) => new Date(s * 1_000),
@@ -173,7 +163,7 @@ type SingleKeyFn<DB, TB extends keyof DB, T> = {
     const TColumn extends ColumnConfig<DB, TB>,
     TCursor extends ExtractTypeFromReferenceExpression<DB, TB, TColumn>,
   >(
-    options: SeekOptions<TColumn, TCursor, true>,
+    options: PaginateCursorOptions<TColumn, TCursor, true>,
   ): Promise<PaginatedResult<T, KeysetMeta<TCursor> & CountedMeta>>;
   <
     const TColumn extends ColumnConfig<DB, TB>,
@@ -183,7 +173,7 @@ type SingleKeyFn<DB, TB extends keyof DB, T> = {
       ColumnFromColumnConfig<TColumn>
     >,
   >(
-    options: SeekOptions<TColumn, TCursor, false | undefined>,
+    options: PaginateCursorOptions<TColumn, TCursor, false | undefined>,
   ): Promise<PaginatedResult<T, KeysetMeta<TCursor>>>;
 };
 
@@ -196,7 +186,7 @@ type CompositeKeyFn<DB, TB extends keyof DB, T> = {
       ColumnFromColumnConfigTuple<TColumn>
     >,
   >(
-    options: SeekOptions<TColumn, TCursor, true>,
+    options: PaginateCursorOptions<TColumn, TCursor, true>,
   ): Promise<PaginatedResult<T, KeysetMeta<TCursor> & CountedMeta>>;
   <
     const TColumn extends readonly ColumnConfig<DB, TB>[],
@@ -206,11 +196,15 @@ type CompositeKeyFn<DB, TB extends keyof DB, T> = {
       ColumnFromColumnConfigTuple<TColumn>
     >,
   >(
-    options: SeekOptions<TColumn, TCursor, false | undefined>,
+    options: PaginateCursorOptions<TColumn, TCursor, false | undefined>,
   ): Promise<PaginatedResult<T, KeysetMeta<TCursor>>>;
 };
 
-export type SeekFn<DB, TB extends keyof DB, T> = SingleKeyFn<DB, TB, T> &
+export type PaginateCursorFn<DB, TB extends keyof DB, T> = SingleKeyFn<
+  DB,
+  TB,
+  T
+> &
   CompositeKeyFn<DB, TB, T>;
 
 const stringifyCursorKey = (
@@ -285,19 +279,19 @@ const parseCursorKey = (
       });
     } else {
       if (v === null) {
-        return null;
+        return [null];
       }
       const col = columnsConfig[0];
       const fn = typeof col === "string" ? null : col.fromCursor;
-      return typeof fn === "function" ? fn(v) : v;
+      return [typeof fn === "function" ? fn(v) : v];
     }
   })();
   return parsedValue;
 };
 
-const keyAlias = (i: number) => `__pipeline_cursor_${i}`;
+const keyAlias = (i: number) => `__paginate_cursor_${i}`;
 
-export function seek<DB, TB extends keyof DB, O, T>(
+export function paginateCursor<DB, TB extends keyof DB, O, T>(
   query: SelectQueryBuilder<DB, TB, O>,
   transform: (data: O) => T,
 ) {
@@ -313,14 +307,14 @@ export function seek<DB, TB extends keyof DB, O, T>(
             ColumnFromColumnConfig<TColumn>
           >
         : never),
-  >(options: SeekOptions<TColumn, TCursor, boolean>) {
-    const isReverse = options?.last !== undefined;
-    const limit = isReverse ? options.last : options.first;
+  >(options: PaginateCursorOptions<TColumn, TCursor, boolean>) {
+    const isReverse = options.strategy === "reverse";
+    const limit = options.limit;
     const cursor = options.cursor;
-    const isComposite = Array.isArray(options.index);
+    const isComposite = Array.isArray(options.orderBy);
     const columnsConfig = isComposite
-      ? (options.index as readonly ColumnConfig<DB, TB>[])
-      : [options.index as ColumnConfig<DB, TB>];
+      ? (options.orderBy as readonly ColumnConfig<DB, TB>[])
+      : [options.orderBy as ColumnConfig<DB, TB>];
 
     const columns = columnsConfig.map((cc) =>
       typeof cc === "string" ? cc : cc.column,
@@ -384,18 +378,18 @@ export function seek<DB, TB extends keyof DB, O, T>(
       if (isReverse) {
         items.reverse();
       }
-      const hasNext =
+      const hasNextCursor =
         (isReverse && cursor !== undefined) ||
         (!isReverse && itemsPlusOne.length > limit);
-      const hasPrevious =
+      const hasPreviousCursor =
         (!isReverse && cursor !== undefined) ||
         (isReverse && itemsPlusOne.length > limit);
       const firstRow = items.at(0);
       const lastRow = items.at(-1);
       const first = firstRow ? cursorOf(firstRow) : null;
       const last = lastRow ? cursorOf(lastRow) : null;
-      const nextKey = hasNext ? last : null;
-      const previousKey = hasPrevious ? first : null;
+      const nextKey = hasNextCursor ? last : null;
+      const previousKey = hasPreviousCursor ? first : null;
       const nextCursor =
         nextKey === null ? null : stringifyCursorKey(columnsConfig, nextKey);
       const previousCursor =
@@ -406,8 +400,8 @@ export function seek<DB, TB extends keyof DB, O, T>(
       return [
         items,
         {
-          hasNext,
-          hasPrevious,
+          hasNextCursor,
+          hasPreviousCursor,
           nextCursor,
           previousCursor,
           nextKey,
@@ -416,7 +410,7 @@ export function seek<DB, TB extends keyof DB, O, T>(
       ] as const;
     };
 
-    if (options?.counting !== true) {
+    if (options.withTotalCount !== true) {
       const itemsPlusOne = await itemsQuery.execute();
       const [items, meta] = getMeta(itemsPlusOne);
       return {
@@ -434,17 +428,17 @@ export function seek<DB, TB extends keyof DB, O, T>(
       countQuery.executeTakeFirstOrThrow(),
       itemsQuery.execute(),
     ]);
-    const totalItems = Number(count.total);
-    const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
+    const totalCount = Number(count.total);
+    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / limit);
     const [items, meta] = getMeta(itemsPlusOne);
 
     return {
       items: items.map(stripKeys).map(transform),
       meta: {
         ...meta,
-        totalItems,
+        totalCount,
         totalPages,
       },
     };
-  } as SeekFn<DB, TB, T>;
+  } as PaginateCursorFn<DB, TB, T>;
 }

@@ -15,7 +15,7 @@ import { Direction, ExtractTupleTypes } from "./pagination.js";
 
 type SingleKeyFn<DB, TB extends keyof DB, T> = {
   /**
-   * **`Pipeline.cursor()`**
+   * **`KyShape.streamCursor()`**
    *
    * Keyset (cursor) based streaming.
    *
@@ -23,45 +23,45 @@ type SingleKeyFn<DB, TB extends keyof DB, T> = {
    * for long running background processes where a database transaction should
    * not be held open.
    *
-   * @see `Pipeline.stream()` for a transaction based streaming alternative.
+   * @see `KyShape.stream()` for a transaction based streaming alternative.
    *
-   * @param index The index used to identify chunk boundaries
-   * @param index.column Column reference
-   * @param index.direction Order by direction (default 'asc')
-   * @param index.nulls Whether nulls will appear first or last (default 'never')
+   * @param orderBy The index used to identify chunk boundaries
+   * @param orderBy.column Column reference
+   * @param orderBy.direction Order by direction (default 'asc')
+   * @param orderBy.nulls Whether nulls will appear first or last (default 'never')
    * @param options Configuration settings
    * @param options.batchSize Number of records to fetch in each batch (default 1,000)
    *
    * @remarks
    *
-   * The `index` parameter may be a single column reference, or a
+   * The `orderBy` parameter may be a single column reference, or a
    * composite reference (an array of column references). If entered as a string,
    * the defaults (`{ direction: 'asc', null: 'never' }`) are used. These may be
    * overridden by providing a configured column reference
    * (`{ column }`)
    *
-   * The index must identify unique records in the table (this is typically
-   * achieved by using a composite index with the table's primary key as the
-   * final element). If an element in a composite index is a nullable column,
-   * set the `nulls` property to `first` or `last`, only use the default `never`
-   * for columns that are non-nullable.
+   * The `orderBy` index must identify unique records in the table (this is
+   * typically achieved by using a composite index with the table's primary key
+   * as the final element). If an element in a composite index is a nullable
+   * column, set the `nulls` property to `first` or `last`, only use the
+   * default `never` for columns that are non-nullable.
    *
-   * `index` sets the query's `ORDER BY` expression.
+   * `orderBy` sets the query's `ORDER BY` expression.
    *
    * @example
    *
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query);
+   *   return kyshape(query);
    * }
    *
-   * for await (const item of findPerson().cursor("id")) {
+   * for await (const item of findPerson().streamCursor("id")) {
    *   // process each `item`
    * }
    *
-   * // using a composite index
-   * const stream = findPerson().cursor([
+   * // using a composite orderBy index
+   * const stream = findPerson().streamCursor([
    *   { column: "last_name", nulls: "last" },
    *   { column: "first_name", nulls: "last" },
    *   id, // unique, non-nullable as final element to ensure index is unique
@@ -79,8 +79,8 @@ type SingleKeyFn<DB, TB extends keyof DB, T> = {
       ColumnFromColumnConfig<TColumn>
     >,
   >(
-    index: TColumn,
-    options?: CursorOptions<TCursor>,
+    orderBy: TColumn,
+    options?: StreamCursorOptions<TCursor>,
   ): AsyncGenerator<T>;
 };
 
@@ -93,38 +93,42 @@ type CompositeKeyFn<DB, TB extends keyof DB, T> = {
       ColumnFromColumnConfigTuple<TColumn>
     >,
   >(
-    index: TColumn,
-    options?: CursorOptions<TCursor>,
+    orderBy: TColumn,
+    options?: StreamCursorOptions<TCursor>,
   ): AsyncGenerator<T>;
 };
 
-type CursorOptions<TCursor> = {
+type StreamCursorOptions<TCursor> = {
   key?: TCursor;
   batchSize?: number;
 };
 
-export type CursorFn<DB, TB extends keyof DB, T> = SingleKeyFn<DB, TB, T> &
+export type StreamCursorFn<DB, TB extends keyof DB, T> = SingleKeyFn<
+  DB,
+  TB,
+  T
+> &
   CompositeKeyFn<DB, TB, T>;
 
-const keyAlias = (i: number) => `__pipeline_cursor_${i}`;
+const keyAlias = (i: number) => `__stream_cursor_${i}`;
 
-export function cursor<DB, TB extends keyof DB, O, T>(
+export function streamCursor<DB, TB extends keyof DB, O, T>(
   query: SelectQueryBuilder<DB, TB, O>,
   transform: (data: O) => T,
 ) {
   return async function* <
-    const TColumn extends
+    const TOrderBy extends
       StringReference<DB, TB> | readonly StringReference<DB, TB>[],
-    TCursor extends (TColumn extends unknown[]
+    TCursor extends (TOrderBy extends unknown[]
       ? ExtractTupleTypes<DB, TB, any>
-      : ExtractTypeFromReferenceExpression<DB, TB, TColumn>),
-  >(index: TColumn, options?: CursorOptions<TCursor>) {
+      : ExtractTypeFromReferenceExpression<DB, TB, TOrderBy>),
+  >(orderBy: TOrderBy, options?: StreamCursorOptions<TCursor>) {
     let key = options?.key;
     const { batchSize = 1_000 } = options ?? {};
-    const isComposite = Array.isArray(index);
+    const isComposite = Array.isArray(orderBy);
     const columnsConfig = isComposite
-      ? (index as readonly ColumnConfig<DB, TB>[])
-      : [index as ColumnConfig<DB, TB>];
+      ? (orderBy as readonly ColumnConfig<DB, TB>[])
+      : [orderBy as ColumnConfig<DB, TB>];
 
     const columns = columnsConfig.map((cc) =>
       typeof cc === "string" ? cc : cc.column,
@@ -169,7 +173,6 @@ export function cursor<DB, TB extends keyof DB, O, T>(
               ),
             ),
         );
-      console.log(itemsQuery.compile());
       const items: Record<string, unknown>[] = await itemsQuery.execute();
       for (const item of items) {
         yield transform(stripKeys(item));
@@ -180,5 +183,5 @@ export function cursor<DB, TB extends keyof DB, O, T>(
       const lastRow = items.at(-1);
       key = lastRow === undefined ? undefined : (cursorOf(lastRow) as TCursor);
     } while (key !== undefined);
-  } as CursorFn<DB, TB, T>;
+  } as StreamCursorFn<DB, TB, T>;
 }

@@ -14,8 +14,8 @@ type Pets<T = {}, U = Pet> = { pets: (U & T)[] };
  */
 async () => {
   const person = await findPerson()
-    .compose(addPetsToPerson(findPet()))
-    .compose(addMotherToPerson(findPerson()));
+    .shape(addPetsToPerson(findPet()))
+    .shape(addMotherToPerson(findPerson()));
   console.log(person satisfies Person & Pets & Mother);
   console.log(person.pets satisfies Pet[]);
   console.log(person.mother satisfies Person | null);
@@ -25,10 +25,10 @@ async () => {
  * Nesting objects in the query builder with de-JSON-ifying the results.
  */
 async () => {
-  const pet = await findPet().compose(
+  const pet = await findPet().shape(
     addOwnerToPet(
-      findPerson().compose(
-        addMotherToPerson(findPerson().compose(addPetsToPerson(findPet()))),
+      findPerson().shape(
+        addMotherToPerson(findPerson().shape(addPetsToPerson(findPet()))),
       ),
     ),
   );

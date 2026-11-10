@@ -1,5 +1,5 @@
 {
-  "name": "kysely-pipeline",
+  "name": "kyshape",
   "version": "1.0.0",
   "description": "Helper for [kysely](https://kysely.dev/)",
   "author": "ttoohey@users.noreply.github.com",

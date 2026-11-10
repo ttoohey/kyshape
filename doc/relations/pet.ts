@@ -1,26 +1,31 @@
-import { pipeline, JsonFrom, Pipeline, PipelineState } from "kysely-pipeline";
+import { kyshape, KyShape, KyShapeBuilder, KyShapeState } from "kyshape";
+import { JsonFrom } from "kyshape/helpers";
 import { Database, db } from "./db.js";
-import { personFromJson, PersonPipeline } from "./person.js";
+import { personFromJson, PersonShape } from "./person.js";
 import { jsonObjectFrom } from "kysely/helpers/postgres";
 import { Selectable } from "kysely";
 
-export type PetPipeline<
+type Pet = Selectable<Database["pet"]>;
+
+export type PetShape<
   O,
   T = O,
-  S extends PipelineState = PipelineState,
+  S extends KyShapeState = any,
   TB extends keyof Database = "pet",
-> = TB extends "pet" ? Pipeline<Database, TB, O, T, S> : never;
+> = TB extends "pet" ? KyShape<Database, TB, O, T, S> : never;
 
-type Pet = Selectable<Database["pet"]>;
+type PetBuilder<O, T, TB extends keyof Database = "pet"> = TB extends "pet"
+  ? KyShapeBuilder<KyShape<Database, TB, O, T, any>>
+  : never;
 
 /**
  * Find records from the `pet` table.
  *
- * @returns QueryBuilderPipeline
+ * @returns KyShape
  */
 export function findPet() {
   const query = db.selectFrom("pet").selectAll();
-  return pipeline(query).lazy().throwIfNotFound();
+  return kyshape(query).lazy().required();
 }
 
 /**
@@ -30,7 +35,7 @@ export function findPet() {
  * @param json the JSON-ified data
  * @returns data cast back to Pet type
  */
-export function petFromJson<T extends Partial<JsonFrom<Pet>>>(json: T) {
+export function petFromJson<T extends JsonFrom<Partial<Pet>>>(json: T) {
   const { ...rest } = json;
   const data = rest as Omit<T, keyof Pet> & Pet;
   // currently Pet == JsonFrom<Pet> so there's no type casting to be done here.
@@ -38,28 +43,34 @@ export function petFromJson<T extends Partial<JsonFrom<Pet>>>(json: T) {
 }
 
 /**
- * Factory method for a pipeline composition callback to extend a `pet` query
- * with an `owner` object containing the pet's related owner (`person`) record.
+ * `KyShape` operator function to extend a `pet` query with an `owner` object
+ * containing the pet's related owner (`person`) record.
  *
- * @param ownerPipeline PersonPipeline
- * @returns query PetPipeline with 'owner' property
+ * @param ownerShape PersonShape
+ * @returns (builder: KyShapeBuilder) => KyShapeBuilder
  */
-export function addOwnerToPet<PersonO, T, S extends PipelineState>(
-  ownerPipeline: PersonPipeline<PersonO, T, S>,
+export function addOwnerToPet<PersonO, PersonT>(
+  ownerShape: PersonShape<PersonO, PersonT>,
 ) {
-  return <O, T, S extends PipelineState>(petPipeline: PetPipeline<O, T, S>) =>
-    petPipeline
-      .extend((query) =>
+  return <O, T>(petBuilder: PetBuilder<O, T>) =>
+    petBuilder
+      .build((query) =>
         query.select(({ ref }) =>
           jsonObjectFrom(
-            ownerPipeline.query.whereRef("person.id", "=", ref("pet.owner_id")),
+            ownerShape.shape.query.whereRef(
+              "person.id",
+              "=",
+              ref("pet.owner_id"),
+            ),
           )
             .$notNull()
             .as("owner"),
         ),
       )
-      .map(({ owner, ...rest }) => ({
+      .transform(({ owner, ...rest }) => ({
         ...rest,
-        owner: ownerPipeline.transform(personFromJson(owner!) as PersonO),
+        owner: ownerShape.shape.applyTransform(
+          personFromJson(owner!) as PersonO,
+        ),
       }));
 }

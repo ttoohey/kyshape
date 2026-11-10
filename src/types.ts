@@ -1,182 +1,205 @@
 import { SelectQueryBuilder } from "kysely";
-import { SeekFn } from "./seek.js";
-import { PageFn } from "./page.js";
-import { CursorFn } from "./cursor.js";
+import { PaginateCursorFn } from "./paginateCursor.js";
+import { PaginateFn } from "./paginate.js";
+import { StreamCursorFn } from "./streamCursor.js";
 import { FirstFn, FirstResult } from "./first.js";
 import { StreamFn } from "./stream.js";
-import { ListFn } from "./list.js";
+import { AllFn } from "./all.js";
 
 export type Merge<O, T, N> = N & Omit<T, Exclude<keyof O, keyof N>>;
 
-export type PipelineState<
-  TThrowIfNotFound extends boolean = boolean,
+export type KyShapeState<
+  TRequired extends boolean = boolean,
   TLazy extends boolean = boolean,
 > = {
-  throwIfNotFound: TThrowIfNotFound;
+  required: TRequired;
   lazy: TLazy;
 };
 
-export type Pipeline<
+export type KyShape<
   DB,
   TB extends keyof DB,
   O,
   T,
-  S extends PipelineState,
+  S extends KyShapeState,
 > = S["lazy"] extends true
-  ? Promise<FirstResult<S["throwIfNotFound"], T>> &
+  ? Promise<FirstResult<S["required"], T>> &
       AsyncIterable<T> &
-      BasePipeline<DB, TB, O, T, S>
+      BaseShape<DB, TB, O, T, S>
   : S["lazy"] extends false
-    ? BasePipeline<DB, TB, O, T, S>
+    ? BaseShape<DB, TB, O, T, S>
     : never;
 
-export interface BasePipeline<
+export interface BaseShape<
   DB,
   TB extends keyof DB,
   O,
   T,
-  S extends PipelineState,
+  S extends KyShapeState,
 > {
   /**
-   * **`Pipeline.query`**
+   * **`KyShape.required()`**
    *
-   * Directly access the pipeline's query builder object.
+   * Sets the `required` flag on the `KyShape` instance which is used by the
+   * `KyShape.first()` function to determine whether to use
+   * `query.executeTakeFirst()` or `query.executeTakeFirstOrThrow()`.
    *
-   * This is typically used when using a pipeline to generate an SQL sub-select.
+   * @example
+   *
+   * ```ts
+   * function findPerson(id: number) {
+   *   const query = db
+   *     .selectFrom("person")
+   *     .selectAll()
+   *     .where("id", "=", id);
+   *   return kyshape(query).required();
+   * }
+   *
+   * const person = await findPerson(123).first(); // throws if `123` isn't found
+   * ```
    */
-  query: SelectQueryBuilder<DB, TB, O>;
+  required(): KyShape<DB, TB, O, T, Omit<S, "required"> & { required: true }>;
+  notRequired(): KyShape<
+    DB,
+    TB,
+    O,
+    T,
+    Omit<S, "required"> & { required: false }
+  >;
   /**
-   * **`Pipeline.extend()`**
+   * **`KyShape.lazy()`**
    *
-   * Extend the pipeline's query builder object.
+   * Sets the `lazy` flag on the `KyShape` instance which enables lazy execution
+   * of `KyShape.first()` and `KyShape.stream()` via `await` or
+   * `for await..of` use on the `KyShape` instance.
    *
    * @example
    *
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query);
+   *   return kyshape(query).lazy();
    * }
    *
-   * // Add aliases `fn` and `ln` to the query selection
-   * const person = await findPerson().extend((query) =>
-   *   query.select(["person.first_name as fn", "person.last_name as ln"]),
-   * ).first();
-   * person.fn === person.first_name;
-   * person.ln === person.last_name;
-   * ```
-   */
-  extend<N>(
-    func: (qb: SelectQueryBuilder<DB, TB, O>) => SelectQueryBuilder<DB, TB, N>,
-  ): Pipeline<DB, TB, N, Merge<O, T, N>, S>;
-  /**
-   * **`Pipeline.map()`**
+   *  // implicitly calls `.first()`
+   * const person = await findPerson();
    *
-   * Add a transformer callback to transform each item of the database result
-   * set.
-   *
-   * @example
-   *
-   * ```ts
-   * function findPerson() {
-   *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query);
+   *  // implicitly calls `.stream()`
+   * for await (const person of findPerson()) {
+   *   ...
    * }
-   *
-   * // Add `full_name` to the transformed result
-   * const person = await findPerson().map((data) => ({
-   *   ...data,
-   *   full_name: `${data.first_name} ${data.last_name}`,
-   * })).first()
    * ```
    */
-  map<N>(func: (data: T) => N): Pipeline<DB, TB, O, N, S>;
+  lazy(): KyShape<DB, TB, O, T, Omit<S, "lazy"> & { lazy: true }>;
+  notLazy(): KyShape<DB, TB, O, T, Omit<S, "lazy"> & { lazy: false }>;
+  /** Fetch records as an array */
+  all: AllFn<DB, TB, T>;
+  /** Get the first matching record */
+  first: FirstFn<T, S>;
+  /** Offset pagination */
+  paginate: PaginateFn<T>;
+  /** Cursor (keyset) pagination */
+  paginateCursor: PaginateCursorFn<DB, TB, T>;
+  /** Transaction based streaming */
+  stream: StreamFn<T>;
+  /** Cursor (keyset) based streaming */
+  streamCursor: StreamCursorFn<DB, TB, T>;
+
+  shape: ShapeFacet<DB, TB, O, T, S>;
+}
+
+export interface ShapeFacet<
+  DB,
+  TB extends keyof DB,
+  O,
+  T,
+  S extends KyShapeState,
+> {
   /**
-   * **`Pipeline.compose()`**
+   * **`KyShape.shape()`**
    *
    * Build complex queries with post-query transformations bundled into
-   * _pipeline operators_ (re-usable functions that call `Pipeline.extend()`
-   * and `Pipeline.map()`).
+   * _shape operators_.
    *
    * @example
    *
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query);
+   *   return kyshape(query);
    * }
    *
-   * const person = await findPerson().compose((pipeline) =>
-   *   pipeline
+   * const person = await findPerson().shape((builder) =>
+   *   builder
    *     .extend((query) =>
    *        query.select(["person.first_name as fn", "person.last_name as ln"]),
    *      )
-   *      .map((data) => ({
+   *      .transform((data) => ({
    *        ...data,
    *        full_name: `${data.fn} ${data.ln}`,
    *      })),
    *   ).first();
    * ```
    *
-   * **Creating re-usable _pipeline operators_**
+   * **Creating re-usable _shape operators_**
    *
-   * Typicallly `Pipeline.compose()` callback functions (_pipeline operators_)
+   * Typicallly `KyShape.shape()` callback functions (_shaper operators_)
    * are defined in a repository collection and used to compose a complex
    * query builder and post-query transformations in one step.
    *
    * @example
    *
    * ```ts
-   * function addPetsToPerson<PetO, T, S extends PipelineState>(
-   *   petPipeline: PetPipeline<PetO, T, S>,
+   * function addPetsToPerson<PetO, T, S extends KyShapeState>(
+   *   petShape: PetShape<PetO, T, S>,
    * ) {
-   *   return <O, T, S extends PipelineState>(
-   *    personPipeline: PersonPipeline<O, T, S>,
+   *   return <O, T, S extends KyShapeState>(
+   *    builder: KyShapeBuilder<PersonShape<O, T, S>>,
    *  ) =>
-   *    personPipeline
+   *    builder
    *      .extend((query) =>
    *        query.select(({ ref }) =>
    *          jsonArrayFrom(
-   *            petPipeline.query.whereRef("pet.owner_id", "=", ref("person.id")),
+   *            petShape.shape.query.whereRef("pet.owner_id", "=", ref("person.id")),
    *          ).as("pets"),
    *        ),
    *      )
-   *      .map(({ pets, ...rest }) => ({
+   *      .transform(({ pets, ...rest }) => ({
    *        ...rest,
    *        pets: pets.map((pet) =>
-   *          petPipeline.transform(petFromJson(pet) as PetO),
+   *          petShape.shape.applyTransform(petFromJson(pet) as PetO),
    *        ),
    *      }));
    * }
    *
    * const person = await findPerson()
-   *   .compose(addPetsToPerson(findPet()))
+   *   .shape(addPetsToPerson(findPet()))
    *   .first();
    * ```
    *
-   * **Chaining _pipeline operators_**
+   * **Chaining _shape operators_**
    *
-   * The result of a `Pipeline.compose()` is another pipeline, so they may
+   * The result of a `KyShape.shape()` is another `KyShape` instance, so they may
    * be chained to form complex database queries.
    *
    * @example
    *
    * ```ts
    * const person = await findPerson()
-   *   .compose(addPetsToPerson(findPet()))
-   *   .compose(addOrdersToPerson(findOrder()))
+   *   .shape(addPetsToPerson(findPet()))
+   *   .shape(addOrdersToPerson(findOrder()))
    *   .first();
    * ```
    *
-   * **Nesting _pipeline operators_**
+   * **Nesting _shape operators_**
    *
-   * By creating _pipeilne operator_ functions with arguments that are pipelines
-   * themselves, it's possible to create a nested heirarchy query.
+   * By creating _shape operator_ functions with arguments that are `KyShape`
+   * instances, it's possible to create a nested heirarchy query.
    *
    * ```ts
    * const person = await findPerson()
-   *   .compose(addPetsToPerson(
-   *     findPet().compose(addVaccinationHistoryToPet(findVaccinationHistory()))
+   *   .shape(addPetsToPerson(
+   *     findPet().shape(addVaccinationHistoryToPet(findVaccinationHistory()))
    *   ))
    *   .first();
    * ```
@@ -203,74 +226,68 @@ export interface BasePipeline<
    * ```
    *
    */
-  compose<QN, TN>(
-    func: (p: Pipeline<DB, TB, O, T, S>) => Pipeline<DB, TB, QN, TN, S>,
-  ): Pipeline<DB, TB, QN, TN, S>;
+  <NO, NT>(
+    func: (builder: ShapeBuilder<DB, TB, O, T>) => ShapeBuilder<DB, TB, NO, NT>,
+  ): KyShape<DB, TB, NO, NT, S>;
+  query: SelectQueryBuilder<DB, TB, O>;
+  applyTransform: (data: O) => T;
+}
+
+export interface ShapeBuilder<DB, TB extends keyof DB, O, T> {
   /**
-   * **`Pipeline.throwIfNotFound()`**
+   * **`ShapeBuilder.build()`**
    *
-   * Sets the `throwIfNotFound` flag on the pipeline which is used by the
-   * `Pipeline.first()` function to determine whether to use
-   * `query.executeTakeFirst()` or `query.executeTakeFirstOrThrow()`.
-   *
-   * @example
-   *
-   * ```ts
-   * function findPerson(id: number) {
-   *   const query = db
-   *     .selectFrom("person")
-   *     .selectAll()
-   *     .where("id", "=", id);
-   *   return pipeline(query).throwIfNotFound();
-   * }
-   *
-   * const person = await findPerson(123).first(); // throws if `123` isn't found
-   * ```
-   */
-  throwIfNotFound(): Pipeline<
-    DB,
-    TB,
-    O,
-    T,
-    Omit<S, "throwIfNotFound"> & { throwIfNotFound: true }
-  >;
-  /**
-   * **`Pipeline.lazy()`**
-   *
-   * Sets the `lazy` flag on the pipeline which enables lazy execution
-   * of `Pipeline.first()` and `Pipeline.stream()` via `await` or
-   * `for await..of` use on the pipeline.
+   * Extend the shape's query builder.
    *
    * @example
    *
    * ```ts
    * function findPerson() {
    *   const query = db.selectFrom("person").selectAll();
-   *   return pipeline(query).lazy();
+   *   return kyshape(query);
    * }
    *
-   *  // implicitly calls `.first()`
-   * const person = await findPerson();
-   *
-   *  // implicitly calls `.stream()`
-   * for await (const person of findPerson()) {
-   *   ...
-   * }
+   * // Add aliases `fn` and `ln` to the query selection
+   * const person = await findPerson().shape(
+   *   builder => builder.build((qb) =>
+   *     qb.select(["person.first_name as fn", "person.last_name as ln"]),
+   *   )
+   * ).first();
+   * person.fn === person.first_name;
+   * person.ln === person.last_name;
    * ```
    */
-  lazy(): Pipeline<DB, TB, O, T, Omit<S, "lazy"> & { lazy: true }>;
-  /** Get the first matching record */
-  first: FirstFn<T, S>;
-  /** Transaction based streaming */
-  stream: StreamFn<T>;
-  /** Fetch records as an array */
-  list: ListFn<T>;
-  /** Offset pagination */
-  page: PageFn<T>;
-  /** Cursor (keyset) pagination */
-  seek: SeekFn<DB, TB, T>;
-  /** Cursor (keyset) based streaming */
-  cursor: CursorFn<DB, TB, T>;
-  /** Apply the transformer to a record */
-  transform: (data: O) => T;
+  build<N>(
+    func: (qb: SelectQueryBuilder<DB, TB, O>) => SelectQueryBuilder<DB, TB, N>,
+  ): ShapeBuilder<DB, TB, N, Merge<O, T, N>>;
+
+  /**
+   * **`ShapeBuilder.transform()`**
+   *
+   * Add a callback to transform each item of the database result
+   * set.
+   *
+   * @example
+   *
+   * ```ts
+   * function findPerson() {
+   *   const query = db.selectFrom("person").selectAll();
+   *   return kyshape(query);
+   * }
+   *
+   * // Add `full_name` to the transformed result
+   * const person = await findPerson().shape(
+   *   builder => builder.transform((data) => ({
+   *      ...data,
+   *     full_name: `${data.first_name} ${data.last_name}`,
+   *   }))
+   * ).first()
+   * ```
+   */
+  transform<N>(func: (data: T) => N): ShapeBuilder<DB, TB, O, N>;
 }
+
+export type KyShapeBuilder<K> =
+  K extends KyShape<infer DB, infer TB, infer O, infer T, any>
+    ? ShapeBuilder<DB, TB, O, T>
+    : never;
